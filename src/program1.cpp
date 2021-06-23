@@ -25,6 +25,7 @@
 #include <iostream>
 #include <cstdio>
 #include "opencv2/opencv.hpp"
+#include "eyedropper.h"
 
 // configuration parameters
 #define NUM_COMNMAND_LINE_ARGUMENTS 1
@@ -35,13 +36,27 @@ enum tool {EYEDROPPER, CROP, PENCIL, PAINTBUCKET, RESET};
 
 // function prototypes
 static void clickCallback(int event, int x, int y, int flags, void* userdata);
+static void toolEventHandler(int event, int x, int y, int flags, void* userdata, tool currentTool);
 static tool selectTool(int val);
 
 // Global variables
+cv::Mat imageIn;
 int selected_tool_value = 0;
-tool selected_tool = selectTool(selected_tool_value);
+tool selected_tool = tool::EYEDROPPER;
 std::string toolName[5] = {"Eyedropper", "Crop", "Pencil", "Paint Bucket", "Reset"};
 
+// Default constructor invoked and bgr values set to 255,255,255
+Eyedropper eyedropper;
+
+cv::Point start;
+cv::Point end;
+
+/*******************************************************************************************************************//**
+ * @brief handler for image click callbacks
+ * @param[in] val the selected_tool_value
+ * @return return the new active tool
+ * @author Christoper D. McMurrough
+ **********************************************************************************************************************/
 static tool selectTool(int val)
 {
 	switch (val)
@@ -77,26 +92,28 @@ static tool selectTool(int val)
  * @return return code (0 for normal termination)
  * @author Christoper D. McMurrough
  **********************************************************************************************************************/
-static void clickCallback(int event, int x, int y, int flags, void* userdata)
+static void toolEventHandler(int event, int x, int y, int flags, void* userdata, tool currentTool)
 {	
     if(event == cv::EVENT_LBUTTONDOWN)
     {
         std::cout << "LEFT CLICK (" << x << ", " << y << ")" << std::endl;
-    }
-    else if(event == cv::EVENT_RBUTTONDOWN)
-    {
-        if(selected_tool_value + 1 >= 5)
+		if (currentTool == tool::EYEDROPPER)
 		{
-			selected_tool_value = 0;
+			// Three color pixel
+			cv::Vec3b pixel = imageIn.at<cv::Vec3b>(y,x);
+			eyedropper.Update(pixel[0], pixel[1], pixel[2]);
+
+			 std::cout << "New eyedropper value = " << eyedropper.blue << " " << eyedropper.green << " " << eyedropper.red << std::endl;
 		}
-		else
+		else if (currentTool == tool::CROP)
 		{
-			selected_tool_value = selected_tool_value + 1;
+			start = cv::Point{x,y};
 		}
-
-		selected_tool = selectTool(selected_tool_value);
-
-		std::cout << "ACTIVE TOOL: " << toolName[selected_tool] << std::endl;
+		else if (currentTool == tool::RESET)
+		{
+			cv::imshow(DISPLAY_WINDOW_NAME, imageIn);
+			cv::waitKey();
+		}
     }
     else if(event == cv::EVENT_MBUTTONDOWN)
     {
@@ -106,6 +123,56 @@ static void clickCallback(int event, int x, int y, int flags, void* userdata)
     {
         std::cout << "MOUSE OVER (" << x << ", " << y << ")" << std::endl;
     }
+	else if (event == cv::EVENT_LBUTTONUP)
+	{
+		if (currentTool == tool::CROP)
+		{
+			end = cv::Point{x,y};
+			cv::Rect region(start,end);
+			cv::Mat imageROI = imageIn(region);
+			cv::imshow(DISPLAY_WINDOW_NAME, imageROI);
+			cv::waitKey();
+		}
+	}
+}
+
+/*******************************************************************************************************************//**
+ * @brief handler for image click callbacks
+ * @param[in] event number of command line arguments
+ * @param[in] x string array of command line arguments
+ * @param[in] y string array of command line arguments
+ * @param[in] flags string array of command line arguments
+ * @param[in] userdata string array of command line arguments
+ * @return return code (0 for normal termination)
+ * @author Christoper D. McMurrough
+ **********************************************************************************************************************/
+static void clickCallback(int event, int x, int y, int flags, void* userdata)
+{	
+	// if the user performs a right click, switch the currently active tool
+	if(event == cv::EVENT_RBUTTONDOWN)
+    {
+		// If the value is 4 then we are at max
+		// reset the value to 0 to get the eyedropper tool
+        if(selected_tool_value + 1 >= 5)
+		{
+			selected_tool_value = 0;
+		}
+		else
+		{
+			// Otherwise, increase the value to get to the next tool
+			selected_tool_value = selected_tool_value + 1;
+		}
+
+		// Change the active tool
+		selected_tool = selectTool(selected_tool_value);
+
+		std::cout << "ACTIVE TOOL: " << toolName[selected_tool] << std::endl;
+    }
+	else
+	{
+		// Handle the event for the corresponding tool
+		toolEventHandler(event, x, y, flags, userdata, selected_tool);
+	}
 }
 
 /*******************************************************************************************************************//**
@@ -125,7 +192,6 @@ int main(int argc, char **argv)
     }
     else
     {
-		cv::Mat imageIn;
 		imageIn = cv::imread(argv[1], cv::IMREAD_COLOR);
 		
 		// check for file error
