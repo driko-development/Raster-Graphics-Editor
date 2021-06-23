@@ -38,6 +38,8 @@ enum tool {EYEDROPPER, CROP, PENCIL, PAINTBUCKET, RESET};
 static void clickCallback(int event, int x, int y, int flags, void* userdata);
 static void toolEventHandler(int event, int x, int y, int flags, void* userdata, tool currentTool);
 static tool selectTool(int val);
+static void updatePixelValues(int x, int y);
+static void reloadImage(cv::Mat image);
 
 // Global variables
 cv::Mat imageIn;
@@ -48,8 +50,26 @@ std::string toolName[5] = {"Eyedropper", "Crop", "Pencil", "Paint Bucket", "Rese
 // Default constructor invoked and bgr values set to 255,255,255
 Eyedropper eyedropper;
 
+// Points to generate point of interest 
 cv::Point start;
 cv::Point end;
+
+bool drawing;
+
+static void updatePixelValues(int x, int y)
+{
+	cv::Vec3b & pixel = imageIn.at<cv::Vec3b>(y,x);
+
+	pixel[0] = eyedropper.blue;
+	pixel[1] = eyedropper.green;
+	pixel[2] = eyedropper.red;
+}
+
+static void reloadImage(cv::Mat image)
+{
+	cv::imshow(DISPLAY_WINDOW_NAME, image);
+	cv::waitKey();
+}
 
 /*******************************************************************************************************************//**
  * @brief handler for image click callbacks
@@ -111,17 +131,23 @@ static void toolEventHandler(int event, int x, int y, int flags, void* userdata,
 		}
 		else if (currentTool == tool::RESET)
 		{
-			cv::imshow(DISPLAY_WINDOW_NAME, imageIn);
-			cv::waitKey();
+			reloadImage(imageIn);
 		}
-    }
-    else if(event == cv::EVENT_MBUTTONDOWN)
-    {
-        std::cout << "MIDDLE CLICK (" << x << ", " << y << ")" << std::endl;
+		else if (currentTool == tool::PENCIL)
+		{
+			updatePixelValues(x,y);
+
+			drawing = true;
+		}
     }
     else if(event == cv::EVENT_MOUSEMOVE)
     {
         std::cout << "MOUSE OVER (" << x << ", " << y << ")" << std::endl;
+
+		if (currentTool == tool::PENCIL && drawing)
+		{
+			updatePixelValues(x,y);
+		}
     }
 	else if (event == cv::EVENT_LBUTTONUP)
 	{
@@ -132,6 +158,12 @@ static void toolEventHandler(int event, int x, int y, int flags, void* userdata,
 			cv::Mat imageROI = imageIn(region);
 			cv::imshow(DISPLAY_WINDOW_NAME, imageROI);
 			cv::waitKey();
+		}
+		if (currentTool == tool::PENCIL)
+		{
+			drawing = false;
+			
+			reloadImage(imageIn);
 		}
 	}
 }
