@@ -25,6 +25,7 @@
 #include <iostream>
 #include <cstdio>
 #include "opencv2/opencv.hpp"
+#include "opencv2/imgproc.hpp"
 #include "eyedropper.h"
 
 // configuration parameters
@@ -138,6 +139,20 @@ static void toolEventHandler(int event, int x, int y, int flags, void* userdata,
 			updatePixelValues(x,y);
 
 			drawing = true;
+		}
+		else if (currentTool == tool::PAINTBUCKET)
+		{
+			cv::Rect rect;
+			cv::floodFill(
+				imageIn, 
+				cv::Point(x,y), 
+				cv::Scalar(eyedropper.blue, eyedropper.green, eyedropper.red),
+				&rect,
+				cv::Scalar(0,0,0),
+				cv::Scalar(255,255,255),
+				4);
+
+			reloadImage(imageIn);
 		}
     }
     else if(event == cv::EVENT_MOUSEMOVE)
