@@ -17,8 +17,8 @@
 
 /*******************************************************************************************************************//**
  * @file program1.cpp
- * @brief C++ hello world example for OpenCV
- * @author Christopher D. McMurrough
+ * @brief Basic Raster Graphrics Editor with 5 tools
+ * @author Edrik Aguilera
  **********************************************************************************************************************/
 
 // include necessary dependencies
@@ -30,7 +30,7 @@
 
 // configuration parameters
 #define NUM_COMNMAND_LINE_ARGUMENTS 1
-#define DISPLAY_WINDOW_NAME "Testing"
+#define DISPLAY_WINDOW_NAME "Raster Graphics Editor"
 
 // Enum for tool selection
 enum tool {EYEDROPPER, CROP, PENCIL, PAINTBUCKET, RESET};
@@ -38,49 +38,72 @@ enum tool {EYEDROPPER, CROP, PENCIL, PAINTBUCKET, RESET};
 // function prototypes
 static void clickCallback(int event, int x, int y, int flags, void* userdata);
 static void toolEventHandler(int event, int x, int y, int flags, void* userdata, tool currentTool);
-static tool selectTool(int val);
+static tool activeTool(int val);
 static void updatePixelValues(int x, int y);
-static void reloadImage(cv::Mat image);
+static void reloadImage();
 
-// Global variables
+// Original image provided via command line args
 cv::Mat imageIn;
+
+// Deep copy, clone, of the original image
+cv::Mat processedImage;
+
+// Index used to retrieve tool name
 int selected_tool_value = 0;
+
+// Active tool
 tool selected_tool = tool::EYEDROPPER;
+
+// String names corresponding to the tool enums
 std::string toolName[5] = {"Eyedropper", "Crop", "Pencil", "Paint Bucket", "Reset"};
 
 // Default constructor invoked and bgr values set to 255,255,255
 Eyedropper eyedropper;
 
-// Points to generate point of interest 
-cv::Point start;
-cv::Point end;
+// Points to generate point of interest, used in Crop tool
+cv::Point point1;
+cv::Point point2;
 
+// State boolean to determine if the pencil is actively being dragged
 bool drawing;
 
+
+/*******************************************************************************************************************//**
+ * @brief Updates the BGR values of a pixel at location (x,y)
+ * @return return 0, updates the pixel value
+ * @author Edrik Aguilera
+ **********************************************************************************************************************/
 static void updatePixelValues(int x, int y)
 {
-	cv::Vec3b & pixel = imageIn.at<cv::Vec3b>(y,x);
+	// Grab a reference to the pixel at position (x,y)
+	// we pass y,x because mat access is row column y -> row and x -> col
+	cv::Vec3b & pixel = processedImage.at<cv::Vec3b>(y,x);
 
+	// Assign the values stored in the eyedropper
 	pixel[0] = eyedropper.blue;
 	pixel[1] = eyedropper.green;
 	pixel[2] = eyedropper.red;
 }
 
-static void reloadImage(cv::Mat image)
+/*******************************************************************************************************************//**
+ * @brief Reloads the processed image
+ * @return return 0
+ * @author Edrik Aguilera
+ **********************************************************************************************************************/
+static void reloadImage()
 {
-	cv::imshow(DISPLAY_WINDOW_NAME, image);
+	cv::imshow(DISPLAY_WINDOW_NAME, processedImage);
 	cv::waitKey();
 }
 
 /*******************************************************************************************************************//**
- * @brief handler for image click callbacks
- * @param[in] val the selected_tool_value
+ * @brief Returns the new active tool
  * @return return the new active tool
- * @author Christoper D. McMurrough
+ * @author Edrik Aguilera
  **********************************************************************************************************************/
-static tool selectTool(int val)
+static tool activeTool()
 {
-	switch (val)
+	switch (selected_tool_value)
 	{
 	case 0:
 		return tool::EYEDROPPER;
@@ -115,71 +138,87 @@ static tool selectTool(int val)
  **********************************************************************************************************************/
 static void toolEventHandler(int event, int x, int y, int flags, void* userdata, tool currentTool)
 {	
-    if(event == cv::EVENT_LBUTTONDOWN)
-    {
-        std::cout << "LEFT CLICK (" << x << ", " << y << ")" << std::endl;
-		if (currentTool == tool::EYEDROPPER)
-		{
-			// Three color pixel
-			cv::Vec3b pixel = imageIn.at<cv::Vec3b>(y,x);
-			eyedropper.Update(pixel[0], pixel[1], pixel[2]);
-
-			 std::cout << "New eyedropper value = " << eyedropper.blue << " " << eyedropper.green << " " << eyedropper.red << std::endl;
-		}
-		else if (currentTool == tool::CROP)
-		{
-			start = cv::Point{x,y};
-		}
-		else if (currentTool == tool::RESET)
-		{
-			reloadImage(imageIn);
-		}
-		else if (currentTool == tool::PENCIL)
-		{
-			updatePixelValues(x,y);
-
-			drawing = true;
-		}
-		else if (currentTool == tool::PAINTBUCKET)
-		{
-			cv::Rect rect;
-			cv::floodFill(
-				imageIn, 
-				cv::Point(x,y), 
-				cv::Scalar(eyedropper.blue, eyedropper.green, eyedropper.red),
-				&rect,
-				cv::Scalar(0,0,0),
-				cv::Scalar(255,255,255),
-				4);
-
-			reloadImage(imageIn);
-		}
-    }
-    else if(event == cv::EVENT_MOUSEMOVE)
-    {
-        std::cout << "MOUSE OVER (" << x << ", " << y << ")" << std::endl;
-
-		if (currentTool == tool::PENCIL && drawing)
-		{
-			updatePixelValues(x,y);
-		}
-    }
-	else if (event == cv::EVENT_LBUTTONUP)
+	// On a left double click with the reset tool active, reset back to original image
+	if (event == cv::EVENT_LBUTTONDBLCLK  && currentTool == tool::RESET)
 	{
-		if (currentTool == tool::CROP)
-		{
-			end = cv::Point{x,y};
-			cv::Rect region(start,end);
-			cv::Mat imageROI = imageIn(region);
-			cv::imshow(DISPLAY_WINDOW_NAME, imageROI);
-			cv::waitKey();
-		}
-		if (currentTool == tool::PENCIL)
-		{
-			drawing = false;
+		// Reset the original image
+		processedImage = imageIn.clone();
+
+		// Reload the window
+		reloadImage();
+	}
+
+	else if(event == cv::EVENT_LBUTTONDOWN && currentTool == tool::EYEDROPPER)
+	{
+		// Three color pixel located at the position (x,y)
+		cv::Vec3b pixel = processedImage.at<cv::Vec3b>(y,x);
+
+		// Update the eyedropper values to the values in the current pixel
+		eyedropper.Update(pixel[0], pixel[1], pixel[2]);
+
+		// Display the updated values
+		std::cout << "New eyedropper value = " << eyedropper.blue << " " << eyedropper.green << " " << eyedropper.red << std::endl;
+	}
+
+	else if(event == cv::EVENT_LBUTTONDOWN && currentTool == tool::CROP)
+	{
+		// Set the first point in the region of interest for crop tool
+		point1 = cv::Point{x,y};
+	}
+
+	else if(event == cv::EVENT_LBUTTONDOWN && currentTool == tool::PENCIL)
+	{
+		// Update the pixel values at the starting position
+		updatePixelValues(x,y);
+
+		// Set the drawing flag to register mouse movements for the pencil
+		drawing = true;
+	}
+
+    else if(event == cv::EVENT_LBUTTONDOWN && currentTool == tool::PAINTBUCKET)
+    {
+		cv::Rect rect;
+
+		cv::floodFill(
+			processedImage, 
+			cv::Point(x,y), 
+			cv::Scalar(eyedropper.blue, eyedropper.green, eyedropper.red),
+			&rect,
+			cv::Scalar(0,0,0),
+			cv::Scalar(0,0,0),
+			4
+		);
+
+		reloadImage();
+    }
+
+    else if(event == cv::EVENT_MOUSEMOVE && currentTool == tool::PENCIL && drawing)
+    {		
+		// when the pencil tool is active and drawing,, moving the mouse will change pixel values
+		updatePixelValues(x,y);
+    }
+
+	
+	else if (event == cv::EVENT_LBUTTONUP && currentTool == tool::CROP)
+	{
+		// Once the button has been released, set the second point
+		point2 = cv::Point{x,y};
+
+		// Create the region of interest
+		cv::Rect region(point1,point2);
+
+		// Clone the resulting image into the processed image to update
+		processedImage = processedImage(region).clone();
+		reloadImage();
+	}
+
+	else if (event == cv::EVENT_LBUTTONUP && currentTool == tool::PENCIL)
+	{
+		// Turn off drawing flag
+		drawing = false;
 			
-			reloadImage(imageIn);
-		}
+		// Display the markings created by the pencil
+		reloadImage();
 	}
 }
 
@@ -191,7 +230,7 @@ static void toolEventHandler(int event, int x, int y, int flags, void* userdata,
  * @param[in] flags string array of command line arguments
  * @param[in] userdata string array of command line arguments
  * @return return code (0 for normal termination)
- * @author Christoper D. McMurrough
+ * @author Edrik Aguilera
  **********************************************************************************************************************/
 static void clickCallback(int event, int x, int y, int flags, void* userdata)
 {	
@@ -211,8 +250,9 @@ static void clickCallback(int event, int x, int y, int flags, void* userdata)
 		}
 
 		// Change the active tool
-		selected_tool = selectTool(selected_tool_value);
+		selected_tool = activeTool();
 
+		// Display the newly selected tool
 		std::cout << "ACTIVE TOOL: " << toolName[selected_tool] << std::endl;
     }
 	else
@@ -239,8 +279,9 @@ int main(int argc, char **argv)
     }
     else
     {
+		// Read the file into the original imageIn
 		imageIn = cv::imread(argv[1], cv::IMREAD_COLOR);
-		
+
 		// check for file error
 		if(!imageIn.data)
 		{
@@ -249,8 +290,15 @@ int main(int argc, char **argv)
 		}
 		else
 		{
-			cv::imshow(DISPLAY_WINDOW_NAME, imageIn);			
-    		cv::setMouseCallback(DISPLAY_WINDOW_NAME, clickCallback, &imageIn);
+			// Create a deep copy of the image
+			// all operations will be done on this image
+			processedImage = imageIn.clone();
+
+			// Display the image window
+			cv::imshow(DISPLAY_WINDOW_NAME, processedImage);
+
+			// Click call back's main function is to switch tools and delegate toolEventHandler			
+    		cv::setMouseCallback(DISPLAY_WINDOW_NAME, clickCallback, &processedImage);
 			cv::waitKey();
 		}
     }
